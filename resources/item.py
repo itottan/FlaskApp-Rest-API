@@ -1,9 +1,10 @@
-import uuid
-from flask import request
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
+from sqlalchemy.exc import SQLAlchemyError
 
-from db import items
+from db import db
+from models import ItemModel
+
 from schemas import ItemSchema, ItemUpdateSchema
 
 blp = Blueprint("Items", __name__, description="Operations on items")
@@ -11,56 +12,59 @@ blp = Blueprint("Items", __name__, description="Operations on items")
 
 @blp.route("/item/<string:item_id>")
 class Item(MethodView):
+    @blp.response(200, ItemSchema)
     def get(self, item_id):
-        try:
-            return items[item_id]
-        except KeyError:
-            abort(404, message="Item not found.")
+        item = ItemModel.query.get_or_404(item_id)
+        return item
 
+    @blp.response(200, ItemSchema)
     def delete(self, item_id):
-        try:
-            del items[item_id]
-            return {"message": "Item deleted."}
-        except KeyError:
-            abort(404, message="Item not found.")
+        item = ItemModel.query.get_or_404(item_id)
+        raise NotImplementedError("アイテムの削除は実装されていません。")
 
-    def put(self, item_id):
-        item_data = request.get_json()
-        # There's  more validation to do here!
-        # Like making sure price is a number, and also both items are optional
-        # Difficult to do with an if statement...
-        if "price" not in item_data or "name" not in item_data:
-            abort(
-                400,
-                message="Bad request. Ensure 'price', and 'name' are included in the JSON payload.",
-            )
-        try:
-            item = items[item_id]
+    @blp.arguments(ItemUpdateSchema) # リクエストで受け取った値で型をチェック、Modelと関係ない
+    @blp.response(200, ItemSchema)
+    def put(self, item_data, item_id): # 引数渡す順番に注意
+        item = ItemModel.query.get(item_id)
+        if item:
+            item.name = item_data["name"]
+            item.price = item_data["price"]
+        else:
+            item = ItemModel(id=item_id, **item_data) # id=item_id 確実にReqから渡される指定のitem_idを作成するため
+        
+        db.session.add(item)
+        db.session.commit()
 
-            # https://blog.teclado.com/python-dictionary-merge-update-operators/
-            item |= item_data
-
-            return item
-        except KeyError:
-            abort(404, message="Item not found.")
+        return item
+        # raise NotImplementedError("アイテムの更新は実装されていません。")　# 未実装・実装途中に使える
+    
+    def delete(self, item_id):
+        item = ItemModel.query.get_or_404(item_id)
+        
+        db.session.delete(item)
+        db.session.commit()
+        
+        # todo 変更後のアイテム情報を戻したい場合の処理
+        return {"message": "アイテムを削除しました。"}
+        
 
 
 @blp.route("/item")
 class ItemList(MethodView):
+    @blp.response(200, ItemSchema(many=True)) # many=True 複数データ対応Option
     def get(self):
-        return {"items": list(items.values())}
+        return ItemModel.query.all()
     
     @blp.arguments(ItemSchema)
+    @blp.response(201, ItemSchema)
     def post(self, item_data):
-        for item in items.values():
-            if (
-                item_data["name"] == item["name"]
-                and item_data["store_id"] == item["store_id"]
-            ):
-                abort(400, message=f"Item already exists.")
+        item = ItemModel(**item_data)
 
-        item_id = uuid.uuid4().hex
-        item = {**item_data, "id": item_id}
-        items[item_id] = item
+        try:
+            db.session.add(item)
+            db.session.commit()
+        # for anything 
+        except SQLAlchemyError:
+            abort(500, message="アイテムの挿入中にエラーが発生しました")
 
         return item

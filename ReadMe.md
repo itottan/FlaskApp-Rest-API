@@ -2,8 +2,11 @@
 
 ## python仮想環境の構築方法
 
+> Create a virtual environment and activate it.
+
 - `python 3.10 -m venv .venv` pythonバージョンを指定し、デフォルトの仮想環境で実行
-- VScode `command + shift + p` interpreter (python select interpreter) [python解释器]
+- `source .venv/bin/activate`
+- Or Use VScode `command + shift + p` interpreter (python select interpreter) [python解释器]
 
 ## 基本設定
 
